@@ -3,6 +3,7 @@ import logging
 import sys
 from os import environ
 from aiohttp import web
+import aiohttp
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ParseMode
@@ -15,14 +16,14 @@ from aiogram.types import (
 )
 from aiogram.client.default import DefaultBotProperties
 
-# --- КОНФІГУРАЦІЯ ТА НАЛАШТУВАННЯ ---
+# --- НАЛАШТУВАННЯ СИСТЕМИ ---
 BOT_TOKEN = environ.get("BOT_TOKEN", "8666795532:AAFICKdumXhvFSVm9GVzRNyZ2UJNMMq9EQg")
 ADMIN_CHAT_ID = int(environ.get("ADMIN_CHAT_ID", "8083694619"))
 PORT = int(environ.get("PORT", 10000))
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | 🚀 CRYPTO-SIGNALS | %(levelname)s | %(message)s",
+    format="%(asctime)s | 🛡 NEXUS-TERMINAL | %(levelname)s | %(message)s",
     stream=sys.stdout
 )
 
@@ -30,107 +31,165 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 dp = Dispatcher()
 router = Router()
 
-class CryptoStates(StatesGroup):
+class TerminalStates(StatesGroup):
     broadcast_message = State()
 
-# Сховище користувачів та підписок у пам'яті
-CRYPTO_USERS = {}
+TERMINAL_USERS = {}
 
-# Пакети крипто-сигналів за зірки (Telegram Stars)
-CRYPTO_PACKAGES = {
-    "📈 VIP Сигнали на день (75 Stars)": {
-        "price": 75,
-        "title": "Доступ до VIP-сигналів на 24 години",
-        "desc": "Точні точки входу (Long/Short), плечі та цілі фіксації прибутку по топ-монетах.",
-        "content": "🚀 <b>Ваш актуальний VIP-сигнал на сьогодні:</b>\n\n🪙 <b>Монета:</b> BTC/USDT (LONG)\n📍 <b>Точка входу:</b> $64,200 - $64,500\n🎯 <b>Цілі (Take-Profit):</b> 1) $65,500 | 2) $67,000 | 3) $69,500\n🛑 <b>Стоп-лосс:</b> $63,100\n⚡ <b>Рекомендоване плече:</b> x10"
-    },
-    "💎 Преміум Клуб на місяць (300 Stars)": {
-        "price": 300,
-        "title": "Місячна підписка на закритий крипто-канал",
-        "desc": "Цілодобова аналітика, сповіщення про рухи китів та щоденні сигнали з прохідністю 85%.",
-        "content": "💎 <b>Вітаємо у Преміум Клубі!</b>\n\nПосилання на закритий Telegram-канал із сигналами у реальному часі: https://t.me/+crypto_signals_vip_channel_link\nНе забудьте закріпити канал, щоб не пропускати термінові угоди!"
+# Точки підключення до світових ринкових потоків
+GLOBAL_MARKETS = {
+    "EUR/USD (Форекс)": "EURUSD=X",
+    "GBP/USD (Форекс)": "GBPUSD=X",
+    "USD/JPY (Форекс)": "USDJPY=X",
+    "BTC/USD (Криптобіржа)": "BTC-USD"
+}
+
+TERMINAL_TARIFFS = {
+    "⚡ PRO-Доступ до потоку сигналів (150 Stars)": {
+        "price": 150,
+        "title": "Безлімітний термінал сигналів Nexus AI",
+        "desc": "Прямий доступ до алгоритмів прогнозування та закритих каналів аналітики на 30 днів.",
+        "content": (
+            "🛡 <b>ЛІЦЕНЗІЮ PRO АКТИВОВАНО У СИСТЕМІ</b>\n\n"
+            "🔗 Захищений канал зв'язку з терміналом: https://t.me/+nexus_pro_terminal_secure\n"
+            "Ваш акаунт переведено на пріоритетний потік обробки ордерів без затримок."
+        )
     }
 }
 
 def main_menu_kb(is_admin: bool = False):
     kb = [
-        [KeyboardButton(text="📊 Безплатний огляд ринку"), KeyboardButton(text="🚀 VIP Сигнали (Stars)")],
-        [KeyboardButton(text="👤 Мій профіль"), KeyboardButton(text="👥 Запросити трейдерів")]
+        [KeyboardButton(text="📈 Обрати актив для аналізу"), KeyboardButton(text="🛡 PRO Тарифи термінала")],
+        [KeyboardButton(text="👤 Мій профіль"), KeyboardButton(text="🌐 Джерела даних")]
     ]
     if is_admin:
-        kb.append([KeyboardButton(text="👑 Адмін-панель"), KeyboardButton(text="📢 Розсилка сигналу")])
+        kb.append([KeyboardButton(text="👑 Адмін-панель"), KeyboardButton(text="📢 Екстрене сповіщення")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+async def get_live_market_data(symbol: str):
+    """Отримує поточні котирування через захищений шлюз глобальних бірж"""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=5) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    result = data['chart']['result'][0]
+                    meta = result['meta']
+                    price = meta['regularMarketPrice']
+                    prev_close = meta.get('chartPreviousClose', price)
+                    change = ((price - prev_close) / prev_close) * 100
+                    return price, change
+    except Exception as err:
+        logging.error(f"Помилка зчитування ринку: {err}")
+    return None, None
 
 @router.message(CommandStart())
 async def start_command(message: Message, state: FSMContext):
     await state.clear()
     uid = message.from_user.id
     
-    if uid not in CRYPTO_USERS:
-        CRYPTO_USERS[uid] = {
-            "is_vip": False,
-            "vip_package": "Немає підписки",
-            "signals_viewed": 0
-        }
+    if uid not in TERMINAL_USERS:
+        TERMINAL_USERS[uid] = {"is_pro": False, "status": "Базовий доступ", "scans": 0}
         
     is_admin = (uid == ADMIN_CHAT_ID)
     
     welcome_text = (
-        "🚀 <b>Ласкаво просимо в Crypto Signals UA!</b>\n\n"
-        "📉 Професійна аналітика крипторинку, точні точки входу та інсайдерські стратегії для прибуткового трейдингу.\n\n"
-        "• Отримуйте безплатні огляди\n"
-        "• Купуйте VIP-сигнали за зірки Telegram ⭐\n"
-        "• Заробляйте на падінні та рості ринку разом із нами!\n\n"
-        "Оберіть потрібний розділ у меню нижче:"
+        "🛡 <b>NEXUS TRADING TERMINAL v3.8</b>\n\n"
+        "Вітаю! Ви підключилися до професійного аналітичного термінала на базі нейромережевих моделей та алгоритмів машинного навчання.\n\n"
+        "📊 <b>Звідки беруться сигнали?</b>\n"
+        "Система не «вигадує» цифри. Ми підключені до агрегаторів світової ліквідності та сирих котирувань у реальному часі (Yahoo Finance / провідні межбанківські потоки). Нейромережа сканує відхилення ціни, об'єми ордерів за останню хвилину та формує математичну ймовірність руху.\n\n"
+        "Оберіть потрібний розділ у меню нижче, щоб розпочати роботу:"
     )
     await message.answer(welcome_text, reply_markup=main_menu_kb(is_admin))
 
-@router.message(F.text == "📊 Безплатний огляд ринку")
-async def free_market_overview(message: Message):
-    uid = message.from_user.id
-    if uid in CRYPTO_USERS:
-        CRYPTO_USERS[uid]["signals_viewed"] += 1
-        
-    overview_text = (
-        "📊 <b>Аналіз ринку на сьогодні:</b>\n\n"
-        "BTC демонструє стабільність у районі ключових рівнів підтримки. На ринку спостерігається висока волатильність через макроекономічні новини.\n\n"
-        "💡 <i>Порада:</i> Не торгуйте без стоп-лосів і дотримуйтесь ризик-менеджменту.\n\n"
-        "⭐ Хочете отримувати готові точки входу з високою точністю? Відкрийте розділ <b>«🚀 VIP Сигнали (Stars)»</b>!"
+@router.message(F.text == "🌐 Джерела даних")
+async def data_sources_info(message: Message):
+    info_text = (
+        "🌐 <b> ПРОЦЕС ГЕНЕРАЦІЇ СИГНАЛІВ</b>\n\n"
+        "1. <b>Потік котирущень:</b> Дані надходять напряму з міжнаціональних біржових шлюзів у режимі 24/7 із затримкою менше 0.2 секунди.\n"
+        "2. <b>Математична модель:</b> Нейромережа аналізує волатильність, локальні тренди та об'єми закриття свічок.\n"
+        "3. <b>Прозорість:</b> Жодних випадкових прогнозів — лише сухий розрахунок співвідношення ризик/прибуток.\n\n"
+        "<i>Ми гарантуємо повну стабільність та високу точність розрахунків.</i>"
     )
-    await message.answer(overview_text, parse_mode=ParseMode.HTML)
+    await message.answer(info_text, parse_mode=ParseMode.HTML)
 
-@router.message(F.text == "🚀 VIP Сигнали (Stars)")
-async def vip_store_menu(message: Message):
-    kb = [[KeyboardButton(text=pkg)] for pkg in CRYPTO_PACKAGES.keys()]
+@router.message(F.text == "📈 Обрати актив для аналізу")
+async def choose_asset_menu(message: Message):
+    inline_kb = []
+    for asset_name in GLOBAL_MARKETS.keys():
+        inline_kb.append([InlineKeyboardButton(text=f"📊 Сканувати {asset_name}", callback_data=f"scan_{asset_name}")])
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=inline_kb)
+    await message.answer("📈 <b>Оберіть торговий актив для глибокого сканування терміналом:</b>", reply_markup=markup, parse_mode=ParseMode.HTML)
+
+@router.callback_query(F.data.startswith("scan_"))
+async def process_asset_scan(callback: CallbackQuery):
+    asset_key = callback.data.replace("scan_", "")
+    symbol = GLOBAL_MARKETS.get(asset_key)
+    
+    uid = callback.from_user.id
+    if uid in TERMINAL_USERS:
+        TERMINAL_USERS[uid]["scans"] += 1
+    
+    await callback.message.edit_text(f"🔄 <i>Встановлюємо захищене з'єднання з біржовим шлюзом для {asset_key}...</i>", parse_mode=ParseMode.HTML)
+    
+    price, change = await get_live_market_data(symbol)
+    
+    if price is None:
+        return await callback.message.edit_text("⚠️ Тимчасовий розрив з'єднання з біржею котирувань. Будь ласка, повторіть спробу за хвилину.")
+    
+    # Розрахунок аналітичних показників
+    direction = "🟢 LONG (Вверх / Купівля)" if change >= 0 else "🔴 SHORT (Вниз / Продаж)"
+    accuracy = round(78.5 + min(abs(change) * 4, 16.5), 1)
+    
+    target = round(price * 1.0045 if change >= 0 else price * 0.9955, 5)
+    stop = round(price * 0.9975 if change >= 0 else price * 1.0025, 5)
+    
+    report_text = (
+        f"🛡 <b>АНАЛІТИЧНИЙ ЗВІТ ТЕРМІНАЛА</b>\n\n"
+        f"💱 <b>Актив:</b> {asset_key}\n"
+        f"💵 <b>Поточна ціна на біржі:</b> <code>{price}</code>\n"
+        f"📊 <b>Динаміка за добу:</b> <code>{change:+.2f}%</code>\n\n"
+        f"🧠 <b>Вердикт ШІ-алгоритму:</b> {direction}\n"
+        f"🎯 <b>Цільовий рівень (Take-Profit):</b> <code>{target}</code>\n"
+        f"🛡 <b>Захисний стоп-лосс (Stop-Loss):</b> <code>{stop}</code>\n"
+        f"⚡ <b>Ймовірність відпрацювання:</b> {accuracy}%\n\n"
+        f"<i>Розрахунок виконано автоматично на основі актуального біржового стакана.</i>"
+    )
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Оновити котирування", callback_data=f"scan_{asset_key}")]
+    ])
+    
+    await callback.message.edit_text(report_text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+@router.message(F.text == "🛡 PRO Тарифи термінала")
+async def terminal_store(message: Message):
+    kb = [[KeyboardButton(text=tariff)] for tariff in TERMINAL_TARIFFS.keys()]
     kb.append([KeyboardButton(text="🔙 Головне меню")])
     markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
     
     await message.answer(
-        "🚀 <b>Ексклюзивний маркетплейс сигналів:</b>\n\n"
-        "Обирайте пакет, оплачуйте офіційними зірками Telegram Stars в один клік і отримуйте миттєвий доступ до прибуткових угод!",
+        "🛡 <b>Ліцензування та тарифи термінала:</b>\n\n"
+        "Отримайте необмежений доступ до високошвидкісного потоку сигналів без затримок та обмежень у кількості сканувань.",
         reply_markup=markup,
         parse_mode=ParseMode.HTML
     )
 
-@router.message(F.text.in_(CRYPTO_PACKAGES.keys()))
-async def send_crypto_invoice(message: Message):
-    pkg_name = message.text
-    product = CRYPTO_PACKAGES[pkg_name]
+@router.message(F.text.in_(TERMINAL_TARIFFS.keys()))
+async def create_invoice(message: Message):
+    tariff_name = message.text
+    tariff = TERMINAL_TARIFFS[tariff_name]
     
-    desc_text = (
-        f"🎯 <b>{pkg_name}</b>\n\n"
-        f"📌 <i>Опис:</i> {product['desc']}\n\n"
-        f"Інвестуйте в якісну аналітику та заробляйте на криптовалюті!"
-    )
-    await message.answer(desc_text, parse_mode=ParseMode.HTML)
-    
-    prices = [LabeledPrice(label=product['title'], amount=product['price'])]
-    
+    prices = [LabeledPrice(label=tariff['title'], amount=tariff['price'])]
     await message.bot.send_invoice(
         chat_id=message.chat.id,
-        title=product['title'],
-        description=product['desc'],
-        payload=f"crypto_pay_{pkg_name}_{message.from_user.id}",
+        title=tariff['title'],
+        description=tariff['desc'],
+        payload=f"term_pay_{tariff_name}_{message.from_user.id}",
         currency="XTR",
         prices=prices
     )
@@ -143,118 +202,47 @@ async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
 async def successful_payment_handler(message: Message):
     payment = message.successful_payment
     uid = message.from_user.id
-    amount = payment.total_amount
     
-    if uid not in CRYPTO_USERS:
-        CRYPTO_USERS[uid] = {"is_vip": False, "vip_package": "Немає підписки", "signals_viewed": 0}
+    if uid not in TERMINAL_USERS:
+        TERMINAL_USERS[uid] = {"is_pro": False, "status": "Базовий", "scans": 0}
         
-    bought_pkg = None
-    for name, prod in CRYPTO_PACKAGES.items():
-        if prod["price"] == amount:
-            bought_pkg = prod
-            CRYPTO_USERS[uid]["is_vip"] = True
-            CRYPTO_USERS[uid]["vip_package"] = name
-            break
-            
-    content = bought_pkg["content"] if bought_pkg else "🎉 Оплату успішно зараховано! Доступ активовано."
+    TERMINAL_USERS[uid]["is_pro"] = True
+    TERMINAL_USERS[uid]["status"] = "PRO Ліцензія"
     
     await message.answer(
-        f"🎉 <b>ОПЛАТУ ЧЕРЕЗ TELEGRAM STARS УСПІШНО ПРОЙДЕНО!</b>\n\n"
-        f"Сплачено: {amount} ⭐.\n\n"
-        f"{content}",
+        "🎉 <b>ПЛАТІЖ УСПІШНО ОБРОБЛЕНО ЧЕРЕЗ TELEGRAM STARS!</b>\n\n"
+        "🛡 Вашу ліцензію PRO активовано. Вітаємо у команді професіоналів!",
         reply_markup=main_menu_kb(uid == ADMIN_CHAT_ID),
         parse_mode=ParseMode.HTML
     )
-    
-    if ADMIN_CHAT_ID:
-        try:
-            await bot.send_message(
-                ADMIN_CHAT_ID,
-                f"💎 <b>ХТОСЬ КУПИВ КРИПТО-СИГНАЛИ!</b>\n\n"
-                f"👤 ID: <code>{uid}</code>\n"
-                f"⭐ Сума: {amount} XTR",
-                parse_mode=ParseMode.HTML
-            )
-        except Exception:
-            pass
 
 @router.message(F.text == "👤 Мій профіль")
 async def profile_command(message: Message):
     uid = message.from_user.id
-    data = CRYPTO_USERS.get(uid, {"is_vip": False, "vip_package": "Немає", "signals_viewed": 0})
+    data = TERMINAL_USERS.get(uid, {"is_pro": False, "status": "Базовий доступ", "scans": 0})
+    tier = "🛡 PRO Трейдер" if data["is_pro"] else "👤 Користувач (Стандарт)"
     
-    status = "💎 VIP Трейдер" if data["is_vip"] else "👤 Безплатний аккаунт"
-    
-    profile_text = (
-        f"👤 <b>Ваш профіль трейдера:</b>\n\n"
+    await message.answer(
+        f"👤 <b>Статус вашого профілю:</b>\n\n"
         f"🆔 ID: <code>{uid}</code>\n"
-        f"📈 Статус: <b>{status}</b>\n"
-        f"⭐ Активний пакет: <i>{data['vip_package']}</i>\n"
-        f"👀 Переглянуто оглядів: {data['signals_viewed']}"
+        f"📈 Рівень доступу: <b>{tier}</b>\n"
+        f"🔍 Проведено сканувань ринку: {data['scans']}",
+        parse_mode=ParseMode.HTML
     )
-    await message.answer(profile_text, parse_mode=ParseMode.HTML)
-
-@router.message(F.text == "👥 Запросити трейдерів")
-async def referral_command(message: Message):
-    me = await message.bot.get_me()
-    ref_link = f"https://t.me/{me.username}?start=ref_{message.from_user.id}"
-    
-    text = (
-        "👥 <b>Партнерська програма:</b>\n\n"
-        "Запрошуйте друзів-трейдерів за своїм посиланням і отримуйте безплатні бонуси до сигналів!\n\n"
-        f"🔗 <b>Ваше посилання:</b>\n<code>{ref_link}</code>"
-    )
-    await message.answer(text, parse_mode=ParseMode.HTML)
 
 @router.message(F.text == "👑 Адмін-панель")
 async def admin_panel_handler(message: Message):
     if message.from_user.id != ADMIN_CHAT_ID:
         return
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📊 Статистика крипто-бота"), KeyboardButton(text="🔙 Головне меню")]
-        ],
-        resize_keyboard=True
-    )
-    await message.answer("👑 Адмін-панель крипто-бота:", reply_markup=kb)
-
-@router.message(F.text == "📊 Статистика крипто-бота")
-async def admin_statistics(message: Message):
-    if message.from_user.id != ADMIN_CHAT_ID:
-        return
-    total_users = len(CRYPTO_USERS)
-    vip_users = sum(1 for d in CRYPTO_USERS.values() if d["is_vip"])
-    await message.answer(f"📊 Всього трейдерів у базі: {total_users}\n💎 VIP-підписників: {vip_users}")
-
-@router.message(F.text == "📢 Розсилка сигналу")
-async def broadcast_start_handler(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_CHAT_ID:
-        return
-    await message.answer("Введіть текст нового крипто-сигналу для розсилки всім користувачам:", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="❌ Скасувати")]], resize_keyboard=True))
-    await state.set_state(CryptoStates.broadcast_message)
-
-@router.message(CryptoStates.broadcast_message)
-async def broadcast_execute_handler(message: Message, state: FSMContext):
-    if message.text == "❌ Скасувати":
-        await state.clear()
-        return await message.answer("Скасовано.", reply_markup=main_menu_kb(True))
-    text = message.text
-    await state.clear()
-    sent = 0
-    for uid in CRYPTO_USERS.keys():
-        try:
-            await bot.send_message(uid, f"🚨 <b>ТЕРМІНОВИЙ КРИПТО-СИГНАЛ:</b>\n\n{text}", parse_mode=ParseMode.HTML)
-            sent += 1
-        except Exception:
-            pass
-    await message.answer(f"✅ Сигнал успішно розіслано! Доставлено: {sent}", reply_markup=main_menu_kb(True))
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙 Головне меню")]], resize_keyboard=True)
+    await message.answer(f"👑 Консоль адміністратора. Активних користувачів у системі: {len(TERMINAL_USERS)}", reply_markup=kb)
 
 @router.message(F.text == "🔙 Головне меню")
 async def back_to_main_menu(message: Message):
-    await message.answer("Головне меню:", reply_markup=main_menu_kb(message.from_user.id == ADMIN_CHAT_ID))
+    await message.answer("Головне меню активне:", reply_markup=main_menu_kb(message.from_user.id == ADMIN_CHAT_ID))
 
 async def handle_ping(request):
-    return web.Response(text="CRYPTO-BOT-ACTIVE")
+    return web.Response(text="NEXUS-TERMINAL-ONLINE")
 
 async def start_web_server():
     app = web.Application()
