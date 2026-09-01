@@ -1,3 +1,6 @@
+
+
+
 import asyncio
 import logging
 import sys
@@ -22,7 +25,7 @@ PORT = int(environ.get("PORT", 10000))
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | ⭐ STARS-CLICKER | %(levelname)s | %(message)s",
+    format="%(asctime)s | 💎 VIP-STORE | %(levelname)s | %(message)s",
     stream=sys.stdout
 )
 
@@ -37,16 +40,32 @@ class UserState(StatesGroup):
 # Сховище даних користувачів у пам'яті
 USERS_DATA = {}
 
-# Пакети для покупки за зірки (Telegram Stars)
-STAR_PACKAGES = {
-    "⚡ Авто-тапер (50 Stars)": {"price": 50, "desc": "Подвоює дохід від кожного кліка навзаєм на 7 днів."},
-    "👑 VIP Статус (150 Stars)": {"price": 150, "desc": "Максимальний множник заробітку та пріоритет у виплатах."}
+# 🔥 ЕЛІТНА ВІТРИНА: Товари, які дають шалену вигоду користувачу за зірки
+VIP_PRODUCTS = {
+    "🔥 Секретна схема (100 Stars)": {
+        "price": 100, 
+        "title": "Схема пасивного доходу 5000 грн/день",
+        "desc": "Закритий мануал з покроковою інструкцією та шаблонами для швидкого заробітку.",
+        "content": "🎉 <b>Ваша секретна інструкція:</b>\n\n1. Перейдіть у наш закритий канал: @vip_money_secrets_ua\n2. Використайте промокод <code>TOP2026</code> для активації подвійного множника.\n3. Запустіть автоматичні алгоритми з файлу в закріпі каналу!"
+    },
+    "👑 VIP Доступ у Клуб (250 Stars)": {
+        "price": 250, 
+        "title": "Довічний доступ до Клубу Мільйонерів",
+        "desc": "Інсайдерська інформація, особистий супровід та щоденні готові кейси.",
+        "content": "👑 <b>Вітаємо у Клубі!</b>\n\nВаше запрошення у закритий VIP-канал із інсайдами: https://t.me/+fake_invite_link_vip\nТут публікуються готові схеми, які приносять результат у перший день."
+    },
+    "⚡ Турбо-бот автономний (500 Stars)": {
+        "price": 500, 
+        "title": "Готовий шаблон авто-заробітку",
+        "desc": "Отримайте повний вихідний код унікального бота для побудови власної мережі.",
+        "content": "⚡ <b>Ваш цифровий актив:</b>\n\nАрхів із повною інструкцією та кодом готового бізнес-бота доступний за посиланням: https://github.com/example/turbo-bot-template"
+    }
 }
 
 def main_menu_kb(is_admin: bool = False):
     kb = [
-        [KeyboardButton(text="⚡ Заробити кошти (Тап)"), KeyboardButton(text="👤 Мій профіль")],
-        [KeyboardButton(text="⭐ Магазин бустів (Stars)"), KeyboardButton(text="💳 Вивести кошти")],
+        [KeyboardButton(text="⚡ Заробити кошти (Тап)"), KeyboardButton(text="💎 Елітна Вітрина (VIP)")],
+        [KeyboardButton(text="👤 Мій профіль"), KeyboardButton(text="💳 Вивести кошти")],
         [KeyboardButton(text="👥 Партнерська програма")]
     ]
     if is_admin:
@@ -63,7 +82,7 @@ async def start_command(message: Message, state: FSMContext):
             "balance": 0.0,
             "taps_count": 0,
             "wallet": "Не вказано",
-            "referrals": 0,
+            "purchases": [],
             "multiplier": 1.0
         }
         
@@ -71,11 +90,8 @@ async def start_command(message: Message, state: FSMContext):
     
     welcome_text = (
         "🇺🇦 <b>Вітаємо у проєкті Гроші Онлайн UA!</b>\n\n"
-        "📈 Офіційний сервіс заробітку з підтримкою Telegram Stars.\n"
-        "• Кликайте та заробляйте баланс\n"
-        "• Купуйте прискорювачі за зірки ⭐\n"
-        "• Виводьте кошти на картки\n\n"
-        "Оберіть розділ у меню нижче:"
+        "💎 Бажаєте заробляти в рази швидше? Відкрийте нашу <b>Елітну Вітрину</b>, де зібрані інсайдерські стратегії та готові інструменти для максимального доходу!\n\n"
+        "Оберіть потрібний розділ у меню нижче:"
     )
     await message.answer(welcome_text, reply_markup=main_menu_kb(is_admin))
 
@@ -83,7 +99,7 @@ async def start_command(message: Message, state: FSMContext):
 async def earn_taps(message: Message):
     uid = message.from_user.id
     if uid not in USERS_DATA:
-        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0}
+        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "purchases": [], "multiplier": 1.0}
         
     earned = 0.50 * USERS_DATA[uid]["multiplier"]
     USERS_DATA[uid]["balance"] += earned
@@ -98,7 +114,7 @@ async def earn_taps(message: Message):
     await message.answer(
         f"⚡ <b>Активність зараховано!</b>\n\n"
         f"💰 Ваш баланс: <b>{balance:.2f} UAH</b>\n"
-        f"⚡ Множник доходу: x{USERS_DATA[uid]['multiplier']}",
+        f"💎 Множник доходу: x{USERS_DATA[uid]['multiplier']}",
         reply_markup=markup,
         parse_mode=ParseMode.HTML
     )
@@ -107,7 +123,7 @@ async def earn_taps(message: Message):
 async def callback_tap_handler(callback: CallbackQuery):
     uid = callback.from_user.id
     if uid not in USERS_DATA:
-        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0}
+        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "purchases": [], "multiplier": 1.0}
         
     earned = 0.50 * USERS_DATA[uid]["multiplier"]
     USERS_DATA[uid]["balance"] += earned
@@ -119,7 +135,7 @@ async def callback_tap_handler(callback: CallbackQuery):
         await callback.message.edit_text(
             f"⚡ <b>Активність зараховано!</b>\n\n"
             f"💰 Ваш баланс: <b>{balance:.2f} UAH</b>\n"
-            f"⚡ Множник доходу: x{USERS_DATA[uid]['multiplier']}",
+            f"💎 Множник доходу: x{USERS_DATA[uid]['multiplier']}",
             reply_markup=callback.message.reply_markup,
             parse_mode=ParseMode.HTML
         )
@@ -127,32 +143,43 @@ async def callback_tap_handler(callback: CallbackQuery):
         pass
     await callback.answer(f"+{earned:.2f} UAH зараховано!")
 
-@router.message(F.text == "⭐ Магазин бустів (Stars)")
-async def shop_stars(message: Message):
-    kb = [[KeyboardButton(text=pkg)] for pkg in STAR_PACKAGES.keys()]
-    kb.append([KeyboardButton(text="🔙 Головне меню")])
-    markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-    
-    await message.answer(
-        "⭐ <b>Магазин прискорювачів за Telegram Stars:</b>\n\n"
-        "Купуйте бусти за офіційні зірки Telegram, щоб збільшити свій дохід усередині сервісу в рази!",
-        reply_markup=markup,
-        parse_mode=ParseMode.HTML
+# --- ВІТРИНА ВИГІДНИХ ПРОПОЗИЦІЙ ---
+@router.message(F.text == "💎 Елітна Вітрина (VIP)")
+async def vip_store_menu(message: Message):
+    text = (
+        "💎 <b>ЕККСЛЮЗИВНА ВІТРИНА РЕЗУЛЬТАТУ</b>\n\n"
+        "Ці інструменти розроблені спеціально для тих, хто втомився витрачати час і хоче отримати готову систему заробітку прямо зараз.\n\n"
+        "Оберіть продукт, який принесе вам максимальний прибуток:"
     )
-
-@router.message(F.text.in_(STAR_PACKAGES.keys()))
-async def send_star_invoice(message: Message):
-    pkg_name = message.text
-    pkg_data = STAR_PACKAGES[pkg_name]
     
-    prices = [LabeledPrice(label=pkg_name, amount=pkg_data["price"])]
+    kb = []
+    for pkg_name, info in VIP_PRODUCTS.items():
+        kb.append([KeyboardButton(text=pkg_name)])
+    kb.append([KeyboardButton(text="🔙 Головне меню")])
+    
+    markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    await message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+
+@router.message(F.text.in_(VIP_PRODUCTS.keys()))
+async def send_vip_invoice(message: Message):
+    pkg_name = message.text
+    product = VIP_PRODUCTS[pkg_name]
+    
+    desc_text = (
+        f"🎯 <b>{product['title']}</b>\n\n"
+        f"📌 <i>Опис:</i> {product['desc']}\n\n"
+        f"Цей матеріал окупається вже після першого застосування!"
+    )
+    await message.answer(desc_text, parse_mode=ParseMode.HTML)
+    
+    prices = [LabeledPrice(label=product['title'], amount=product['price'])]
     
     await message.bot.send_invoice(
         chat_id=message.chat.id,
-        title=pkg_name,
-        description=pkg_data["desc"],
-        payload=f"star_boost_{message.from_user.id}",
-        currency="XTR",  # Валюта Telegram Stars
+        title=product['title'],
+        description=product['desc'],
+        payload=f"vip_buy_{pkg_name}_{message.from_user.id}",
+        currency="XTR",
         prices=prices
     )
 
@@ -164,22 +191,27 @@ async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
 async def successful_payment_handler(message: Message):
     payment = message.successful_payment
     uid = message.from_user.id
+    amount = payment.total_amount
     
     if uid not in USERS_DATA:
-        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0}
+        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "purchases": [], "multiplier": 1.0}
         
-    # Надаємо бонус залежно від суми зірок
-    if payment.total_amount >= 150:
-        USERS_DATA[uid]["multiplier"] = 5.0
-        boost_name = "👑 VIP Статус (x5 дохід)"
-    else:
-        USERS_DATA[uid]["multiplier"] = 2.0
-        boost_name = "⚡ Авто-тапер (x2 дохід)"
-        
+    # Знаходимо, що саме купив користувач за сумою зірок
+    bought_product = None
+    for name, prod in VIP_PRODUCTS.items():
+        if prod["price"] == amount:
+            bought_product = prod
+            USERS_DATA[uid]["purchases"].append(prod["title"])
+            if amount >= 250:
+                USERS_DATA[uid]["multiplier"] = 10.0  # Мега-множник за дорогі покупки
+            break
+            
+    content_to_send = bought_product["content"] if bought_product else "🎉 Дякуємо за покупку! Ваш доступ активовано у системі."
+    
     await message.answer(
-        f"🎉 <b>Успішна оплата через Telegram Stars!</b>\n"
-        f"Ви придбали: <b>{boost_name}</b> за {payment.total_amount} ⭐.\n"
-        f"Ваш прискорювач вже активовано!",
+        f"🎉 <b>УСПІШНА ОПЛАТА ЧЕРЕЗ TELEGRAM STARS!</b>\n\n"
+        f"Ви інвестували у свій успіх {amount} ⭐.\n\n"
+        f"{content_to_send}",
         reply_markup=main_menu_kb(uid == ADMIN_CHAT_ID),
         parse_mode=ParseMode.HTML
     )
@@ -188,9 +220,9 @@ async def successful_payment_handler(message: Message):
         try:
             await bot.send_message(
                 ADMIN_CHAT_ID,
-                f"💰 <b>НОВА ОПЛАТА STARS У БОТІ!</b>\n\n"
-                f"👤 Користувач: <code>{uid}</code>\n"
-                f"⭐ Сплачено: {payment.total_amount} XTR",
+                f"💎 <b>ХТОСЬ КУПИВ ТОВАР НА ВІТРИНІ!</b>\n\n"
+                f"👤 Користувач ID: <code>{uid}</code>\n"
+                f"⭐ Сума: {amount} XTR",
                 parse_mode=ParseMode.HTML
             )
         except Exception:
@@ -199,14 +231,17 @@ async def successful_payment_handler(message: Message):
 @router.message(F.text == "👤 Мій профіль")
 async def profile_command(message: Message):
     uid = message.from_user.id
-    data = USERS_DATA.get(uid, {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0})
+    data = USERS_DATA.get(uid, {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "purchases": [], "multiplier": 1.0})
+    
+    purchases_list = ", ".join(data["purchases"]) if data["purchases"] else "Немає покупок"
     
     profile_text = (
         f"👤 <b>Ваш особистий кабінет:</b>\n\n"
-        f"🆔 ID користувача: <code>{uid}</code>\n"
-        f"💰 Доступний баланс: <b>{data['balance']:.2f} UAH</b>\n"
-        f"⚡ Активний множник: <b>x{data['multiplier']}</b>\n"
-        f"💳 Реквізити для виплат: <code>{data['wallet']}</code>"
+        f"🆔 ID: <code>{uid}</code>\n"
+        f"💰 Баланс: <b>{data['balance']:.2f} UAH</b>\n"
+        f"💎 Множник: <b>x{data['multiplier']}</b>\n"
+        f"🛍 Придбані VIP-продукти: <i>{purchases_list}</i>\n"
+        f"💳 Гаманець: <code>{data['wallet']}</code>"
     )
     await message.answer(profile_text, parse_mode=ParseMode.HTML)
 
@@ -217,7 +252,7 @@ async def referral_command(message: Message):
     
     text = (
         "👥 <b>Партнерська програма:</b>\n\n"
-        "Запрошуйте друзів та отримуйте бонуси на баланс!\n\n"
+        "Запрошуйте друзів на Елітну Вітрину та отримуйте бонуси!\n\n"
         f"🔗 <b>Ваше посилання:</b>\n<code>{ref_link}</code>"
     )
     await message.answer(text, parse_mode=ParseMode.HTML)
@@ -297,7 +332,7 @@ async def broadcast_execute_handler(message: Message, state: FSMContext):
     sent = 0
     for uid in USERS_DATA.keys():
         try:
-            await bot.send_message(uid, f"📢 <b>НОВИНИ:</b>\n\n{text}", parse_mode=ParseMode.HTML)
+            await bot.send_message(uid, f"📢 <b>НОВИНИ ВІТРИНИ:</b>\n\n{text}", parse_mode=ParseMode.HTML)
             sent += 1
         except Exception:
             pass
@@ -308,7 +343,7 @@ async def back_to_main_menu(message: Message):
     await message.answer("Головне меню:", reply_markup=main_menu_kb(message.from_user.id == ADMIN_CHAT_ID))
 
 async def handle_ping(request):
-    return web.Response(text="STARS-BOT-ACTIVE")
+    return web.Response(text="VIP-STORE-BOT-ACTIVE")
 
 async def start_web_server():
     app = web.Application()
@@ -329,9 +364,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         pass
-
-
- 
-  
-  
-   
