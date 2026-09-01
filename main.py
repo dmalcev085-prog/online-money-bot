@@ -1,4 +1,4 @@
-import asyncio
+Import asyncio
 import logging
 import sys
 from os import environ
@@ -9,7 +9,10 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, 
+    InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
+)
 from aiogram.client.default import DefaultBotProperties
 
 # --- КОНФІГУРАЦІЯ ТА НАЛАШТУВАННЯ ---
@@ -19,7 +22,7 @@ PORT = int(environ.get("PORT", 10000))
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | 🇺🇦 ONLINE-MONEY-UA | %(levelname)s | %(message)s",
+    format="%(asctime)s | ⭐ STARS-CLICKER | %(levelname)s | %(message)s",
     stream=sys.stdout
 )
 
@@ -34,10 +37,17 @@ class UserState(StatesGroup):
 # Сховище даних користувачів у пам'яті
 USERS_DATA = {}
 
+# Пакети для покупки за зірки (Telegram Stars)
+STAR_PACKAGES = {
+    "⚡ Авто-тапер (50 Stars)": {"price": 50, "desc": "Подвоює дохід від кожного кліка навзаєм на 7 днів."},
+    "👑 VIP Статус (150 Stars)": {"price": 150, "desc": "Максимальний множник заробітку та пріоритет у виплатах."}
+}
+
 def main_menu_kb(is_admin: bool = False):
     kb = [
         [KeyboardButton(text="⚡ Заробити кошти (Тап)"), KeyboardButton(text="👤 Мій профіль")],
-        [KeyboardButton(text="👥 Партнерська програма"), KeyboardButton(text="💳 Вивести кошти")]
+        [KeyboardButton(text="⭐ Магазин бустів (Stars)"), KeyboardButton(text="💳 Вивести кошти")],
+        [KeyboardButton(text="👥 Партнерська програма")]
     ]
     if is_admin:
         kb.append([KeyboardButton(text="👑 Адмін-панель"), KeyboardButton(text="📢 Масова розсилка")])
@@ -53,18 +63,19 @@ async def start_command(message: Message, state: FSMContext):
             "balance": 0.0,
             "taps_count": 0,
             "wallet": "Не вказано",
-            "referrals": 0
+            "referrals": 0,
+            "multiplier": 1.0
         }
         
     is_admin = (uid == ADMIN_CHAT_ID)
     
     welcome_text = (
         "🇺🇦 <b>Вітаємо у проєкті Гроші Онлайн UA!</b>\n\n"
-        "📈 Це офіційний сервіс цифрового заробітку та бонусних винагород у Telegram.\n"
-        "• Виконуйте активність (тапи)\n"
-        "• Запрошуйте друзів за посиланням\n"
-        "• Замовляйте виплати на банківські карти та гаманці\n\n"
-        "Оберіть потрібний розділ у меню нижче:"
+        "📈 Офіційний сервіс заробітку з підтримкою Telegram Stars.\n"
+        "• Кликайте та заробляйте баланс\n"
+        "• Купуйте прискорювачі за зірки ⭐\n"
+        "• Виводьте кошти на картки\n\n"
+        "Оберіть розділ у меню нижче:"
     )
     await message.answer(welcome_text, reply_markup=main_menu_kb(is_admin))
 
@@ -72,21 +83,22 @@ async def start_command(message: Message, state: FSMContext):
 async def earn_taps(message: Message):
     uid = message.from_user.id
     if uid not in USERS_DATA:
-        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0}
+        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0}
         
-    USERS_DATA[uid]["balance"] += 0.50  # 0.50 грн за клік або бал
+    earned = 0.50 * USERS_DATA[uid]["multiplier"]
+    USERS_DATA[uid]["balance"] += earned
     USERS_DATA[uid]["taps_count"] += 1
     
     balance = USERS_DATA[uid]["balance"]
     
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 НАТИСНУТИ ЩЕ (+0.50 грн)", callback_data="do_tap_action")]
+        [InlineKeyboardButton(text=f"🚀 НАТИСНУТИ ЩЕ (+{earned:.2f} грн)", callback_data="do_tap_action")]
     ])
     
     await message.answer(
         f"⚡ <b>Активність зараховано!</b>\n\n"
         f"💰 Ваш баланс: <b>{balance:.2f} UAH</b>\n"
-        f"📊 Всього кліків: {USERS_DATA[uid]['taps_count']}",
+        f"⚡ Множник доходу: x{USERS_DATA[uid]['multiplier']}",
         reply_markup=markup,
         parse_mode=ParseMode.HTML
     )
@@ -95,9 +107,10 @@ async def earn_taps(message: Message):
 async def callback_tap_handler(callback: CallbackQuery):
     uid = callback.from_user.id
     if uid not in USERS_DATA:
-        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0}
+        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0}
         
-    USERS_DATA[uid]["balance"] += 0.50
+    earned = 0.50 * USERS_DATA[uid]["multiplier"]
+    USERS_DATA[uid]["balance"] += earned
     USERS_DATA[uid]["taps_count"] += 1
     
     balance = USERS_DATA[uid]["balance"]
@@ -106,25 +119,93 @@ async def callback_tap_handler(callback: CallbackQuery):
         await callback.message.edit_text(
             f"⚡ <b>Активність зараховано!</b>\n\n"
             f"💰 Ваш баланс: <b>{balance:.2f} UAH</b>\n"
-            f"📊 Всього кліків: {USERS_DATA[uid]['taps_count']}",
+            f"⚡ Множник доходу: x{USERS_DATA[uid]['multiplier']}",
             reply_markup=callback.message.reply_markup,
             parse_mode=ParseMode.HTML
         )
     except Exception:
         pass
-    await callback.answer("+0.50 UAH зараховано на баланс!")
+    await callback.answer(f"+{earned:.2f} UAH зараховано!")
+
+@router.message(F.text == "⭐ Магазин бустів (Stars)")
+async def shop_stars(message: Message):
+    kb = [[KeyboardButton(text=pkg)] for pkg in STAR_PACKAGES.keys()]
+    kb.append([KeyboardButton(text="🔙 Головне меню")])
+    markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    
+    await message.answer(
+        "⭐ <b>Магазин прискорювачів за Telegram Stars:</b>\n\n"
+        "Купуйте бусти за офіційні зірки Telegram, щоб збільшити свій дохід усередині сервісу в рази!",
+        reply_markup=markup,
+        parse_mode=ParseMode.HTML
+    )
+
+@router.message(F.text.in_(STAR_PACKAGES.keys()))
+async def send_star_invoice(message: Message):
+    pkg_name = message.text
+    pkg_data = STAR_PACKAGES[pkg_name]
+    
+    prices = [LabeledPrice(label=pkg_name, amount=pkg_data["price"])]
+    
+    await message.bot.send_invoice(
+        chat_id=message.chat.id,
+        title=pkg_name,
+        description=pkg_data["desc"],
+        payload=f"star_boost_{message.from_user.id}",
+        currency="XTR",  # Валюта Telegram Stars
+        prices=prices
+    )
+
+@router.pre_checkout_query()
+async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
+    await pre_checkout_query.answer(ok=True)
+
+@router.message(F.successful_payment)
+async def successful_payment_handler(message: Message):
+    payment = message.successful_payment
+    uid = message.from_user.id
+    
+    if uid not in USERS_DATA:
+        USERS_DATA[uid] = {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0}
+        
+    # Надаємо бонус залежно від суми зірок
+    if payment.total_amount >= 150:
+        USERS_DATA[uid]["multiplier"] = 5.0
+        boost_name = "👑 VIP Статус (x5 дохід)"
+    else:
+        USERS_DATA[uid]["multiplier"] = 2.0
+        boost_name = "⚡ Авто-тапер (x2 дохід)"
+        
+    await message.answer(
+        f"🎉 <b>Успішна оплата через Telegram Stars!</b>\n"
+        f"Ви придбали: <b>{boost_name}</b> за {payment.total_amount} ⭐.\n"
+        f"Ваш прискорювач вже активовано!",
+        reply_markup=main_menu_kb(uid == ADMIN_CHAT_ID),
+        parse_mode=ParseMode.HTML
+    )
+    
+    if ADMIN_CHAT_ID:
+        try:
+            await bot.send_message(
+                ADMIN_CHAT_ID,
+                f"💰 <b>НОВА ОПЛАТА STARS У БОТІ!</b>\n\n"
+                f"👤 Користувач: <code>{uid}</code>\n"
+                f"⭐ Сплачено: {payment.total_amount} XTR",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
 
 @router.message(F.text == "👤 Мій профіль")
 async def profile_command(message: Message):
     uid = message.from_user.id
-    data = USERS_DATA.get(uid, {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0})
+    data = USERS_DATA.get(uid, {"balance": 0.0, "taps_count": 0, "wallet": "Не вказано", "referrals": 0, "multiplier": 1.0})
     
     profile_text = (
         f"👤 <b>Ваш особистий кабінет:</b>\n\n"
         f"🆔 ID користувача: <code>{uid}</code>\n"
         f"💰 Доступний баланс: <b>{data['balance']:.2f} UAH</b>\n"
-        f"⚡ Успішних активностей: {data['taps_count']}\n"
-        f"👥 Запрошено партнерів: {data['referrals']}\n"
+        f"⚡ Активний множник: <b>x{data['multiplier']}</b>\n"
         f"💳 Реквізити для виплат: <code>{data['wallet']}</code>"
     )
     await message.answer(profile_text, parse_mode=ParseMode.HTML)
@@ -135,9 +216,9 @@ async def referral_command(message: Message):
     ref_link = f"https://t.me/{me.username}?start=ref_{message.from_user.id}"
     
     text = (
-        "👥 <b>Партнерська програма (Реферали):</b>\n\n"
-        "Запрошуйте друзів, знайомих або діліться посиланням у соцмережах. За кожного активного користувача ви отримуєте бонусні кошти на свій баланс!\n\n"
-        f"🔗 <b>Ваше індивідуальне посилання:</b>\n<code>{ref_link}</code>"
+        "👥 <b>Партнерська програма:</b>\n\n"
+        "Запрошуйте друзів та отримуйте бонуси на баланс!\n\n"
+        f"🔗 <b>Ваше посилання:</b>\n<code>{ref_link}</code>"
     )
     await message.answer(text, parse_mode=ParseMode.HTML)
 
@@ -149,15 +230,12 @@ async def payout_request(message: Message, state: FSMContext):
     min_limit = 200.0
     if data["balance"] < min_limit:
         return await message.answer(
-            f"⚠️ <b>Мінімальна сума для виводу коштів — {min_limit} UAH.</b>\n"
-            f"Наразі на вашому балансі: {data['balance']:.2f} UAH.\n"
-            f"Продовжуйте заробляти та запрошувати друзів!",
+            f"⚠️ Мінімальна сума для виводу — <b>{min_limit} UAH</b>.\nНа балансі: {data['balance']:.2f} UAH.",
             parse_mode=ParseMode.HTML
         )
         
     await message.answer(
-        "💳 <b>Оформлення заявки на виплату:</b>\n\n"
-        "Будь ласка, введіть номер вашої банківської картки (приват / моно) або USDT-гаманець:",
+        "💳 Введіть номер вашої картки для виплати:",
         reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="❌ Скасувати")]], resize_keyboard=True)
     )
     await state.set_state(UserState.entering_wallet)
@@ -172,32 +250,16 @@ async def process_wallet_input(message: Message, state: FSMContext):
     wallet = message.text.strip()
     USERS_DATA[uid]["wallet"] = wallet
     amount = USERS_DATA[uid]["balance"]
-    
-    # Скидаємо баланс після подачі заявки
     USERS_DATA[uid]["balance"] = 0.0
     await state.clear()
     
-    await message.answer(
-        "✅ <b>Заявку на виплату успішно зареєстровано!</b>\n"
-        "Кошти надійдуть на вказані реквізити після перевірки адміністратором (протягом 24 годин).",
-        reply_markup=main_menu_kb(uid == ADMIN_CHAT_ID),
-        parse_mode=ParseMode.HTML
-    )
-    
+    await message.answer("✅ Заявку на виплату зареєстровано!", reply_markup=main_menu_kb(uid == ADMIN_CHAT_ID))
     if ADMIN_CHAT_ID:
         try:
-            await bot.send_message(
-                ADMIN_CHAT_ID,
-                f"🚨 <b>НОВА ЗАЯВКА НА ВИПЛАТУ!</b>\n\n"
-                f"👤 ID гравця: <code>{uid}</code>\n"
-                f"💰 Сума: <b>{amount:.2f} UAH</b>\n"
-                f"💳 Картка/Гаманець: {wallet}",
-                parse_mode=ParseMode.HTML
-            )
+            await bot.send_message(ADMIN_CHAT_ID, f"🚨 ВИПЛАТА!\nUser: {uid}\nСума: {amount:.2f} UAH\nКартка: {wallet}")
         except Exception:
             pass
 
-# --- АДМІНІСТРАТИВНА ПАНЕЛЬ ---
 @router.message(F.text == "👑 Адмін-панель")
 async def admin_panel_handler(message: Message):
     if message.from_user.id != ADMIN_CHAT_ID:
@@ -208,7 +270,7 @@ async def admin_panel_handler(message: Message):
         ],
         resize_keyboard=True
     )
-    await message.answer("👑 Панель управління адміністратора:", reply_markup=kb)
+    await message.answer("👑 Панель управління:", reply_markup=kb)
 
 @router.message(F.text == "📊 Статистика платформи")
 async def admin_statistics(message: Message):
@@ -216,50 +278,37 @@ async def admin_statistics(message: Message):
         return
     total_users = len(USERS_DATA)
     total_money = sum(d["balance"] for d in USERS_DATA.values())
-    
-    await message.answer(
-        f"📊 <b>Статистика сервісу:</b>\n\n"
-        f"👥 Всього користувачів у базі: <b>{total_users}</b>\n"
-        f"💰 Загальний невиплачений баланс гравців: <b>{total_money:.2f} UAH</b>",
-        parse_mode=ParseMode.HTML
-    )
+    await message.answer(f"📊 Гравців у базі: {total_users}\n💰 Борг перед гравцями: {total_money:.2f} UAH")
 
 @router.message(F.text == "📢 Масова розсилка")
 async def broadcast_start_handler(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_CHAT_ID:
         return
-    await message.answer(
-        "📢 Введіть текст повідомлення для розсилки всім користувачам:",
-        reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="❌ Скасувати")]], resize_keyboard=True)
-    )
+    await message.answer("Введіть текст розсилки:", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="❌ Скасувати")]], resize_keyboard=True))
     await state.set_state(UserState.broadcast_message)
 
 @router.message(UserState.broadcast_message)
 async def broadcast_execute_handler(message: Message, state: FSMContext):
     if message.text == "❌ Скасувати":
         await state.clear()
-        return await message.answer("Розсилку скасовано.", reply_markup=main_menu_kb(True))
-        
+        return await message.answer("Скасовано.", reply_markup=main_menu_kb(True))
     text = message.text
     await state.clear()
-    
-    sent_count = 0
+    sent = 0
     for uid in USERS_DATA.keys():
         try:
-            await bot.send_message(uid, f"📢 <b>ІНФОРМАЦІЯ ВІД СЕРВІСУ:</b>\n\n{text}", parse_mode=ParseMode.HTML)
-            sent_count += 1
+            await bot.send_message(uid, f"📢 <b>НОВИНИ:</b>\n\n{text}", parse_mode=ParseMode.HTML)
+            sent += 1
         except Exception:
             pass
-            
-    await message.answer(f"✅ Розсилку успішно завершено! Доставлено: {sent_count}/{len(USERS_DATA)}", reply_markup=main_menu_kb(True))
+    await message.answer(f"✅ Надіслано: {sent}", reply_markup=main_menu_kb(True))
 
 @router.message(F.text == "🔙 Головне меню")
 async def back_to_main_menu(message: Message):
-    await message.answer("Головне меню активне:", reply_markup=main_menu_kb(message.from_user.id == ADMIN_CHAT_ID))
+    await message.answer("Головне меню:", reply_markup=main_menu_kb(message.from_user.id == ADMIN_CHAT_ID))
 
-# --- ВЕБ-СЕРВЕР ДЛЯ ПІДТРИМКИ AKTИBHOCTI НА RENDER ---
 async def handle_ping(request):
-    return web.Response(text="ONLINE-MONEY-UA-ACTIVE")
+    return web.Response(text="STARS-BOT-ACTIVE")
 
 async def start_web_server():
     app = web.Application()
@@ -268,14 +317,10 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    logging.info(f"Web server started on port {PORT}")
 
-# --- ЗАПУСК СИСТЕМИ ---
 async def main():
     dp.include_router(router)
     asyncio.create_task(start_web_server())
-    
-    logging.info("BOT STARTED SUCCESSFULLY IN UKRAINE.")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
@@ -283,4 +328,10 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logging.info("Bot stopped.")
+        pass
+
+
+ 
+  
+  
+   
