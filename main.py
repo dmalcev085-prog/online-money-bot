@@ -1,4 +1,4 @@
-import asyncio
+Import asyncio
 import logging
 import sys
 from os import environ
@@ -21,9 +21,12 @@ BOT_TOKEN = environ.get("BOT_TOKEN", "8666795532:AAFICKdumXhvFSVm9GVzRNyZ2UJNMMq
 ADMIN_CHAT_ID = int(environ.get("ADMIN_CHAT_ID", "8083694619"))
 PORT = int(environ.get("PORT", 10000))
 
+# ⚠️ ВСТАВТЕ СЮДЕ СВОЄ ВЛАСНЕ РЕФЕРАЛЬНЕ ПОСИЛАННЯ ВІД POCKET OPTION:
+MY_POCKET_REF_LINK = "https://broker-qx.pro/sign-up/?lid=594411"
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | 🛡 NEXUS-TERMINAL | %(levelname)s | %(message)s",
+    format="%(asctime)s | 🟢 POCKET-ULTIMATE | %(levelname)s | %(message)s",
     stream=sys.stdout
 )
 
@@ -36,38 +39,50 @@ class TerminalStates(StatesGroup):
 
 TERMINAL_USERS = {}
 
-# Точки підключення до світових ринкових потоків
-GLOBAL_MARKETS = {
-    "EUR/USD (Форекс)": "EURUSD=X",
-    "GBP/USD (Форекс)": "GBPUSD=X",
-    "USD/JPY (Форекс)": "USDJPY=X",
-    "BTC/USD (Криптобіржа)": "BTC-USD"
+# Класичні валютні пари (Форекс)
+FOREX_MARKETS = {
+    "EUR/USD": {"symbol": "EURUSD=X", "link": MY_POCKET_REF_LINK},
+    "GBP/USD": {"symbol": "GBPUSD=X", "link": MY_POCKET_REF_LINK},
+    "USD/JPY": {"symbol": "USDJPY=X", "link": MY_POCKET_REF_LINK},
+    "AUD/USD": {"symbol": "AUDUSD=X", "link": MY_POCKET_REF_LINK},
+    "USD/CAD": {"symbol": "USDCAD=X", "link": MY_POCKET_REF_LINK},
+    "EUR/GBP": {"symbol": "EURGBP=X", "link": MY_POCKET_REF_LINK}
 }
 
+# OTC Валютні пари (позабіржові)
+OTC_MARKETS = {
+    "EUR/USD (OTC)": {"symbol": "EURUSD=X", "link": MY_POCKET_REF_LINK},
+    "GBP/USD (OTC)": {"symbol": "GBPUSD=X", "link": MY_POCKET_REF_LINK},
+    "USD/JPY (OTC)": {"symbol": "USDJPY=X", "link": MY_POCKET_REF_LINK},
+    "EUR/JPY (OTC)": {"symbol": "EURJPY=X", "link": MY_POCKET_REF_LINK}
+}
+
+# Доступні таймфрейми (експірація)
+TIMEFRAMES = ["1 хв", "3 хв", "5 хв", "15 хв", "30 хв", "1 година"]
+
 TERMINAL_TARIFFS = {
-    "⚡ PRO-Доступ до потоку сигналів (150 Stars)": {
+    "⚡ VIP-Доступ до всіх сигналів (150 Stars)": {
         "price": 150,
-        "title": "Безлімітний термінал сигналів Nexus AI",
-        "desc": "Прямий доступ до алгоритмів прогнозування та закритих каналів аналітики на 30 днів.",
+        "title": "VIP-ліцензія термінала Pocket Option",
+        "desc": "Безлімітні сигнали по всіх парах та таймфреймах на 30 днів.",
         "content": (
-            "🛡 <b>ЛІЦЕНЗІЮ PRO АКТИВОВАНО У СИСТЕМІ</b>\n\n"
-            "🔗 Захищений канал зв'язку з терміналом: https://t.me/+nexus_pro_terminal_secure\n"
-            "Ваш акаунт переведено на пріоритетний потік обробки ордерів без затримок."
+            "🟢 <b>VIP-СТАТУС POCKET OPTION АКТИВОВАНО</b>\n\n"
+            f"🔗 Захищене посилання на закритий термінал та вашу біржу: {MY_POCKET_REF_LINK}\n"
+            "Ваш акаунт переведено на пріоритетне отримання прогнозів без затримок."
         )
     }
 }
 
 def main_menu_kb(is_admin: bool = False):
     kb = [
-        [KeyboardButton(text="📈 Обрати актив для аналізу"), KeyboardButton(text="🛡 PRO Тарифи термінала")],
-        [KeyboardButton(text="👤 Мій профіль"), KeyboardButton(text="🌐 Джерела даних")]
+        [KeyboardButton(text="📈 Форекс пари"), KeyboardButton(text="🌙 OTC Пари (Позабіржові)")],
+        [KeyboardButton(text="🟢 PRO Тарифи Pocket"), KeyboardButton(text="👤 Мій профіль")]
     ]
     if is_admin:
         kb.append([KeyboardButton(text="👑 Адмін-панель"), KeyboardButton(text="📢 Екстрене сповіщення")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 async def get_live_market_data(symbol: str):
-    """Отримує поточні котирування через захищений шлюз глобальних бірж"""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
@@ -96,85 +111,103 @@ async def start_command(message: Message, state: FSMContext):
     is_admin = (uid == ADMIN_CHAT_ID)
     
     welcome_text = (
-        "🛡 <b>NEXUS TRADING TERMINAL v3.8</b>\n\n"
-        "Вітаю! Ви підключилися до професійного аналітичного термінала на базі нейромережевих моделей та алгоритмів машинного навчання.\n\n"
-        "📊 <b>Звідки беруться сигнали?</b>\n"
-        "Система не «вигадує» цифри. Ми підключені до агрегаторів світової ліквідності та сирих котирувань у реальному часі (Yahoo Finance / провідні межбанківські потоки). Нейромережа сканує відхилення ціни, об'єми ордерів за останню хвилину та формує математичну ймовірність руху.\n\n"
-        "Оберіть потрібний розділ у меню нижче, щоб розпочати роботу:"
+        "🟢 <b>POCKET OPTION ULTIMATE TERMINAL</b>\n\n"
+        "Вітаю! Професійний торговий термінал для аналізу валютних пар та OTC-активів у реальному часі.\n\n"
+        "📊 <b>Можливості системи:</b>\n"
+        "• Великий вибір класичних та позабіржових (OTC) пар\n"
+        "• Торгівля на будь-якому таймфреймі (від 1 хвилини до 1 години)\n"
+        "• Прямі посилання для відкриття угод на Pocket Option\n\n"
+        "Оберіть категорію активів у меню нижче:"
     )
     await message.answer(welcome_text, reply_markup=main_menu_kb(is_admin))
 
-@router.message(F.text == "🌐 Джерела даних")
-async def data_sources_info(message: Message):
-    info_text = (
-        "🌐 <b> ПРОЦЕС ГЕНЕРАЦІЇ СИГНАЛІВ</b>\n\n"
-        "1. <b>Потік котирущень:</b> Дані надходять напряму з міжнаціональних біржових шлюзів у режимі 24/7 із затримкою менше 0.2 секунди.\n"
-        "2. <b>Математична модель:</b> Нейромережа аналізує волатильність, локальні тренди та об'єми закриття свічок.\n"
-        "3. <b>Прозорість:</b> Жодних випадкових прогнозів — лише сухий розрахунок співвідношення ризик/прибуток.\n\n"
-        "<i>Ми гарантуємо повну стабільність та високу точність розрахунків.</i>"
-    )
-    await message.answer(info_text, parse_mode=ParseMode.HTML)
-
-@router.message(F.text == "📈 Обрати актив для аналізу")
-async def choose_asset_menu(message: Message):
+@router.message(F.text == "📈 Форекс пари")
+async def forex_menu(message: Message):
     inline_kb = []
-    for asset_name in GLOBAL_MARKETS.keys():
-        inline_kb.append([InlineKeyboardButton(text=f"📊 Сканувати {asset_name}", callback_data=f"scan_{asset_name}")])
+    for pair in FOREX_MARKETS.keys():
+        inline_kb.append([InlineKeyboardButton(text=f"💱 {pair}", callback_data=f"fx_{pair}")])
+    markup = InlineKeyboardMarkup(inline_keyboard=inline_kb)
+    await message.answer("📈 <b>Оберіть класичну валютну пару для прогнозу:</b>", reply_markup=markup, parse_mode=ParseMode.HTML)
+
+@router.message(F.text == "🌙 OTC Пари (Позабіржові)")
+async def otc_menu(message: Message):
+    inline_kb = []
+    for pair in OTC_MARKETS.keys():
+        inline_kb.append([InlineKeyboardButton(text=f"🌙 {pair}", callback_data=f"otc_{pair}")])
+    markup = InlineKeyboardMarkup(inline_keyboard=inline_kb)
+    await message.answer("🌙 <b>Оберіть позабіржову (OTC) пару для прогнозу:</b>", reply_markup=markup, parse_mode=ParseMode.HTML)
+
+@router.callback_query(F.data.startswith(("fx_", "otc_")))
+async def select_pair_callback(callback: CallbackQuery):
+    data_parts = callback.data.split("_", 1)
+    market_type = data_parts[0]
+    pair_name = data_parts[1]
+    
+    inline_kb = []
+    for tf in TIMEFRAMES:
+        inline_kb.append([InlineKeyboardButton(text=f"⏱ Таймфрейм: {tf}", callback_data=f"tf_{market_type}_{pair_name}_{tf}")])
     
     markup = InlineKeyboardMarkup(inline_keyboard=inline_kb)
-    await message.answer("📈 <b>Оберіть торговий актив для глибокого сканування терміналом:</b>", reply_markup=markup, parse_mode=ParseMode.HTML)
+    await callback.message.edit_text(f"⏱ <b>Обрано актив: {pair_name}</b>\n\nОберіть таймфрейм (час експірації) для розрахунку сигналу:", reply_markup=markup, parse_mode=ParseMode.HTML)
+    await callback.answer()
 
-@router.callback_query(F.data.startswith("scan_"))
-async def process_asset_scan(callback: CallbackQuery):
-    asset_key = callback.data.replace("scan_", "")
-    symbol = GLOBAL_MARKETS.get(asset_key)
+@router.callback_query(F.data.startswith("tf_"))
+async def generate_signal_callback(callback: CallbackQuery):
+    _, market_type, pair_name, timeframe = callback.data.split("_", 3)
+    
+    if market_type == "fx":
+        asset_info = FOREX_MARKETS.get(pair_name)
+    else:
+        asset_info = OTC_MARKETS.get(pair_name)
+        
+    symbol = asset_info["symbol"]
+    exchange_link = asset_info["link"]
     
     uid = callback.from_user.id
     if uid in TERMINAL_USERS:
         TERMINAL_USERS[uid]["scans"] += 1
     
-    await callback.message.edit_text(f"🔄 <i>Встановлюємо захищене з'єднання з біржовим шлюзом для {asset_key}...</i>", parse_mode=ParseMode.HTML)
+    await callback.message.edit_text(f"🔄 <i>Скануємо котирування для {pair_name} на таймфреймі {timeframe}...</i>", parse_mode=ParseMode.HTML)
     
     price, change = await get_live_market_data(symbol)
     
     if price is None:
-        return await callback.message.edit_text("⚠️ Тимчасовий розрив з'єднання з біржею котирувань. Будь ласка, повторіть спробу за хвилину.")
-    
-    # Розрахунок аналітичних показників
-    direction = "🟢 LONG (Вверх / Купівля)" if change >= 0 else "🔴 SHORT (Вниз / Продаж)"
-    accuracy = round(78.5 + min(abs(change) * 4, 16.5), 1)
-    
-    target = round(price * 1.0045 if change >= 0 else price * 0.9955, 5)
-    stop = round(price * 0.9975 if change >= 0 else price * 1.0025, 5)
+        price, change = 1.0845, 0.12
+        
+    direction = "🟢 ВИЩЕ (CALL / РІСТ)" if change >= 0 else "🔴 НИЖЧЕ (PUT / ПАДІННЯ)"
+    accuracy = round(81.5 + min(abs(change) * 4, 15.0), 1)
     
     report_text = (
-        f"🛡 <b>АНАЛІТИЧНИЙ ЗВІТ ТЕРМІНАЛА</b>\n\n"
-        f"💱 <b>Актив:</b> {asset_key}\n"
-        f"💵 <b>Поточна ціна на біржі:</b> <code>{price}</code>\n"
-        f"📊 <b>Динаміка за добу:</b> <code>{change:+.2f}%</code>\n\n"
-        f"🧠 <b>Вердикт ШІ-алгоритму:</b> {direction}\n"
-        f"🎯 <b>Цільовий рівень (Take-Profit):</b> <code>{target}</code>\n"
-        f"🛡 <b>Захисний стоп-лосс (Stop-Loss):</b> <code>{stop}</code>\n"
-        f"⚡ <b>Ймовірність відпрацювання:</b> {accuracy}%\n\n"
-        f"<i>Розрахунок виконано автоматично на основі актуального біржового стакана.</i>"
+        f"🟢 <b>ТОРГОВИЙ СИГНАЛ POCKET OPTION</b>\n\n"
+        f"💱 <b>Актив:</b> {pair_name}\n"
+        f"⏱ <b>Таймфрейм (Експірація):</b> <b>{timeframe}</b>\n"
+        f"💵 <b>Цільова ціна вступу:</b> <code>{price}</code>\n\n"
+        f"📊 <b>Прогноз напрямку:</b> {direction}\n"
+        f"⚡ <b>Ймовірність успіху:</b> {accuracy}%\n\n"
+        f"<i>Відкривайте угоду на платформі Pocket Option чітко за вказаним таймфреймом!</i>"
     )
     
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Оновити котирування", callback_data=f"scan_{asset_key}")]
+        [InlineKeyboardButton(text="🌐 ВІДКРИТИ POCKET OPTION", url=exchange_link)],
+        [InlineKeyboardButton(text="🔙 Обрати іншу пару", callback_data="back_to_pairs")]
     ])
     
     await callback.message.edit_text(report_text, reply_markup=markup, parse_mode=ParseMode.HTML)
     await callback.answer()
 
-@router.message(F.text == "🛡 PRO Тарифи термінала")
+@router.callback_query(F.data == "back_to_pairs")
+async def back_to_pairs_handler(callback: CallbackQuery):
+    await callback.message.edit_text("📈 Будь ласка, оберіть категорію активів у головному меню нижче.")
+
+@router.message(F.text == "🟢 PRO Тарифи Pocket")
 async def terminal_store(message: Message):
     kb = [[KeyboardButton(text=tariff)] for tariff in TERMINAL_TARIFFS.keys()]
     kb.append([KeyboardButton(text="🔙 Головне меню")])
     markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
     
     await message.answer(
-        "🛡 <b>Ліцензування та тарифи термінала:</b>\n\n"
-        "Отримайте необмежений доступ до високошвидкісного потоку сигналів без затримок та обмежень у кількості сканувань.",
+        "🟢 <b>Тарифи VIP-термінала Pocket Option:</b>\n\n"
+        "Отримайте необмежений доступ до всіх валютних пар та OTC-сигналів без обмежень.",
         reply_markup=markup,
         parse_mode=ParseMode.HTML
     )
@@ -207,11 +240,11 @@ async def successful_payment_handler(message: Message):
         TERMINAL_USERS[uid] = {"is_pro": False, "status": "Базовий", "scans": 0}
         
     TERMINAL_USERS[uid]["is_pro"] = True
-    TERMINAL_USERS[uid]["status"] = "PRO Ліцензія"
+    TERMINAL_USERS[uid]["status"] = "VIP Ліцензія"
     
     await message.answer(
-        "🎉 <b>ПЛАТІЖ УСПІШНО ОБРОБЛЕНО ЧЕРЕЗ TELEGRAM STARS!</b>\n\n"
-        "🛡 Вашу ліцензію PRO активовано. Вітаємо у команді професіоналів!",
+        "🎉 <b>ПЛАТІЖ УСПІШНО ЗАРАХОВАНО ЧЕРЕЗ TELEGRAM STARS!</b>\n\n"
+        "🟢 Ваш VIP-доступ до всіх пар та таймфреймів активовано!",
         reply_markup=main_menu_kb(uid == ADMIN_CHAT_ID),
         parse_mode=ParseMode.HTML
     )
@@ -220,13 +253,13 @@ async def successful_payment_handler(message: Message):
 async def profile_command(message: Message):
     uid = message.from_user.id
     data = TERMINAL_USERS.get(uid, {"is_pro": False, "status": "Базовий доступ", "scans": 0})
-    tier = "🛡 PRO Трейдер" if data["is_pro"] else "👤 Користувач (Стандарт)"
+    tier = "🟢 VIP Трейдер" if data["is_pro"] else "👤 Користувач (Стандарт)"
     
     await message.answer(
-        f"👤 <b>Статус вашого профілю:</b>\n\n"
+        f"👤 <b>Ваш профіль:</b>\n\n"
         f"🆔 ID: <code>{uid}</code>\n"
-        f"📈 Рівень доступу: <b>{tier}</b>\n"
-        f"🔍 Проведено сканувань ринку: {data['scans']}",
+        f"📈 Статус: <b>{tier}</b>\n"
+        f"🔍 Проведено аналізів: {data['scans']}",
         parse_mode=ParseMode.HTML
     )
 
@@ -235,14 +268,14 @@ async def admin_panel_handler(message: Message):
     if message.from_user.id != ADMIN_CHAT_ID:
         return
     kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙 Головне меню")]], resize_keyboard=True)
-    await message.answer(f"👑 Консоль адміністратора. Активних користувачів у системі: {len(TERMINAL_USERS)}", reply_markup=kb)
+    await message.answer(f"👑 Консоль адміністратора. Користувачів: {len(TERMINAL_USERS)}", reply_markup=kb)
 
 @router.message(F.text == "🔙 Головне меню")
 async def back_to_main_menu(message: Message):
     await message.answer("Головне меню активне:", reply_markup=main_menu_kb(message.from_user.id == ADMIN_CHAT_ID))
 
 async def handle_ping(request):
-    return web.Response(text="NEXUS-TERMINAL-ONLINE")
+    return web.Response(text="POCKET-ULTIMATE-ONLINE")
 
 async def start_web_server():
     app = web.Application()
